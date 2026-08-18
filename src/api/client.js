@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:3000/api";
+const BASE_URL = "https://card-viewer-api.onrender.com/api";
 
 // 取得 token
 function getToken() {
