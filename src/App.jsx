@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState } from "react";
-import { isLoggedIn, getUsername, clearAuth } from "./api/auth.js";
+import { isLoggedIn, getUsername, getIsAdmin, clearAuth } from "./api/auth.js";
 
 import HomePage from "./pages/HomePage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
@@ -10,16 +10,19 @@ import AddCardPage from "./pages/AddCardPage.jsx";
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [username, setUsername] = useState(getUsername());
+  const [isAdmin, setIsAdmin] = useState(getIsAdmin());
 
-  function handleLogin(uname) {
+  function handleLogin(uname, admin = false) {
     setLoggedIn(true);
     setUsername(uname);
+    setIsAdmin(admin);
   }
 
   function handleLogout() {
     clearAuth();
     setLoggedIn(false);
     setUsername(null);
+    setIsAdmin(false);
   }
 
   return (
@@ -42,9 +45,9 @@ export default function App() {
 
       {/* 頁面 */}
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<HomePage isAdmin={isAdmin} />} />
         <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
-        <Route path="/card/:id" element={<CardDetailPage loggedIn={loggedIn} username={username} />} />
+        <Route path="/card/:id" element={<CardDetailPage loggedIn={loggedIn} username={username} isAdmin={isAdmin} />} />
         <Route path="/add" element={loggedIn ? <AddCardPage /> : <Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>

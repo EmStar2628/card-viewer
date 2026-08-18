@@ -17,11 +17,12 @@ export default function LoginPage({ onLogin }) {
     const token = searchParams.get("token");
     const username = searchParams.get("username");
     const error = searchParams.get("error");
+    const isAdmin = searchParams.get("isAdmin") === "true";
 
     if (error) { setErr("Google 登入失敗，請再試一次"); return; }
     if (token && username) {
-      saveAuth(token, username);
-      onLogin(username);
+      saveAuth(token, username, isAdmin);
+      onLogin(username, isAdmin);
       navigate("/");
     }
   }, []);
@@ -33,12 +34,12 @@ export default function LoginPage({ onLogin }) {
       if (isRegister) {
         await api.register(username, password);
         const data = await api.login(username, password);
-        saveAuth(data.token, data.username);
-        onLogin(data.username);
+        saveAuth(data.token, data.username, data.isAdmin);
+        onLogin(data.username, data.isAdmin);
       } else {
         const data = await api.login(username, password);
-        saveAuth(data.token, data.username);
-        onLogin(data.username);
+        saveAuth(data.token, data.username, data.isAdmin);
+        onLogin(data.username, data.isAdmin);
       }
       navigate("/");
     } catch (e) {
@@ -48,8 +49,12 @@ export default function LoginPage({ onLogin }) {
     }
   }
 
+  const GOOGLE_URL = import.meta.env.DEV
+    ? "http://localhost:3000/api/auth/google"
+    : "https://card-viewer-api.onrender.com/api/auth/google";
+
   function handleGoogleLogin() {
-    window.location.href = "https://card-viewer-api.onrender.com/api/auth/google";
+    window.location.href = GOOGLE_URL;
   }
 
   return (

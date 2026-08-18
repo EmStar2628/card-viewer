@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
+import AnnouncementPanel from "../components/AnnouncementPanel.jsx";
 
 const ELEM = { w:"水",f:"火",t:"木",l:"光",d:"暗" };
 const ELEM_COLOR = { w:"#3B82F6",f:"#EF4444",t:"#22C55E",l:"#CA8A04",d:"#A855F7" };
@@ -12,7 +13,7 @@ const ALL_TAGS = {
   "隊伍技": ["集氣值系統","隊伍倍率","動態倍率","隊伍減傷","延長移動時間","減CD","攻前傷害","殺敵回血","隊伍追打","改變掉落","無視轉珠障礙","無視攻擊限制","隊伍改變消除"],
 };
 
-export default function HomePage() {
+export default function HomePage({ isAdmin }) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -59,6 +60,8 @@ export default function HomePage() {
   return (
     <div style={{ minHeight:"100vh", background:"#F1F5F9", padding:"24px 16px", boxSizing:"border-box" }}>
       <div style={{ maxWidth:800, margin:"0 auto" }}>
+
+        <AnnouncementPanel isAdmin={isAdmin} />
 
         {/* 回饋問卷 */}
         <div style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:16, padding:"14px 20px", marginBottom:20, display:"flex", justifyContent:"space-between", alignItems:"center" }}>

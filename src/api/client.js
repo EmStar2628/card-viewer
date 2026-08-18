@@ -1,4 +1,6 @@
-const BASE_URL = "https://card-viewer-api.onrender.com/api";
+const BASE_URL = import.meta.env.DEV
+  ? "http://localhost:3000/api"
+  : "https://card-viewer-api.onrender.com/api";
 
 // 取得 token
 function getToken() {
@@ -58,4 +60,16 @@ export const api = {
 
   deleteComment: (commentId) =>
     request(`/interactions/comment/${commentId}`, { method: "DELETE" }),
+
+  // 公告
+  getAnnouncements: () => request("/announcements"),
+
+  createAnnouncement: (data) =>
+    request("/announcements", { method: "POST", body: JSON.stringify(data) }),
+
+  updateAnnouncement: (id, data) =>
+    request(`/announcements/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteAnnouncement: (id) =>
+    request(`/announcements/${id}`, { method: "DELETE" }),
 };
