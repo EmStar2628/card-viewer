@@ -21,7 +21,7 @@ function EffectTag({ item }) {
       ))}
       {item.conds?.length > 0 && (
         <div style={{ fontSize: 12, color: "#888", paddingLeft: 26, marginTop: 3, borderTop: "1px dashed #E5E7EB", paddingTop: 3 }}>
-          ⚙️ 發動條件：{item.conds.join("；")}
+          ⚙️ 發動條件：{item.conds.join("、並")}
         </div>
       )}
     </div>

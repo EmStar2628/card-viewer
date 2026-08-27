@@ -12,14 +12,17 @@ const STONE = {
   w:"水符石",f:"火符石",t:"木符石",l:"光符石",d:"暗符石",h:"心符石",
   W:"水強化符石",F:"火強化符石",T:"木強化符石",L:"光強化符石",D:"暗強化符石",H:"心強化符石",
   "+"  :"強化符石","*":"任意符石","all":"所有符石","notStrong":"非強化符石",
-  rdm:"隨機",rdmS:"強化隨機",memAttr:"成員屬性符石",notEnemyAttr:"非敵人屬性符石",
-  notSelfAttr:"非自身屬性符石",xPos:"X爆符石",frozen:"凍結符石",elec:"電擊符石","frozen_elec":"凍結+電擊符石",
+  rdm:"隨機",rdmS:"強化隨機",memAttr:"成員屬性符石",notMemAttr:"非成員屬性符石",notEnemyAttr:"非敵人屬性符石",notPrey:"非克制敵人屬性符石",
+  notSelfAttr:"非自身屬性符石",xPos:"X型固定位置",frozen:"凍結符石",elec:"電擊符石","frozen_elec":"凍結+電擊符石",
 };
 const STONE_NUM = {"-1":"無","0":"水符石","1":"火符石","2":"木符石","3":"光符石","4":"暗符石",
-  "5":"心符石","6":"水強化符石","7":"火強化符石","8":"木強化符石","9":"光強化符石","10":"暗強化符石","11":"心強化符石"};
+  "5":"心符石","6":"水強化符石","7":"火強化符石","8":"木強化符石","9":"光強化符石","10":"暗強化符石","11":"心強化符石",
+  "12":"成員屬性符石","13":"成員屬性強化符石"};
 const RACE_SLOT = {"-2":"無","-1":"不限種族","0":"神族","1":"魔族","2":"人類","3":"獸類","4":"龍類","5":"妖精","6":"機械"};
 const ICON_MAP = {AddAtk:"增攻",AddRec:"回復",AddAtkRec:"攻回",ReduceHurt:"減傷",Dissolve:"改變消除",AddTime:"加秒",AlsoPossess:"兼具",ExtraAtk:"追打",FreeMove:"排珠"};
 const TS_ADDTIME = {"1":"延長","2":"必然延長","3":"必然延長至"};
+const BYAC_M = {"-1":"","0":"水","1":"火","2":"木","3":"光","4":"暗","5":"心","6":"屬性","7":"任意"};
+const ORDR_MODE = {"-1":"","0":"由左上往右排","1":"由左上往下排"};
 const IGNR_NAME = {"0":"無","1":"拼圖障礙","2":"N屬限制","3":"固定連擊限制","4":"防禦力"};
 const AS_ADDTIME_MODE = {"0,0":"延長","0,1":"必然延長","1,0":"必然延長至"};
 const TSHV_MODE = {"self":"自身直行","lorh":"隊長或戰友直行","lnh":"隊長及戰友直行","rdmc":"隨機直行","rdmr":"隨機橫行","h":"橫行","v":"直行"};
@@ -28,6 +31,7 @@ const LS_POSSESS_BY = {"0":"水","1":"火","2":"木","3":"光","4":"暗","5":"�
 const EXATK_WHO = {self:"自身",all:"全隊",highest:"攻最高成員"};
 const EXATK_TGT = {one:"單體",all:"全體"};
 const EXATK_SRC = {self:"自身",all:"全隊"};
+const PREATK_ATTR = {"-2":"","-1":"無屬性","0":"水屬性","1":"火屬性","2":"木屬性","3":"光屬性","4":"暗屬性","5":"心屬性"};
 const EXATK_ATTR = {"-2":"","-1":"無屬性","0":"水屬性","1":"火屬性","2":"木屬性","3":"光屬性","4":"暗屬性","5":"隨機屬性"};
 
 // ==================== 工具函數 ====================
@@ -52,13 +56,13 @@ function stoneList(str) {
 function parseAR(str) {
   if (!str) return "";
   return str.split("_").map(seg => {
-    if (!seg) return "";
+    if (!seg || seg === "*") return "";
     if (seg.startsWith("--")) return `「${seg.slice(2)}」系列`;
     let rest = seg, e = "", r = "";
     for (const [k, v] of Object.entries(ELEM)) if (rest.startsWith(k)) { e = v; rest = rest.slice(1); break; }
-    for (const [k, v] of Object.entries(RACE)) if (rest === k) { r = v + "族"; break; }
-    return (e ? e + "屬" : "") + r || seg;
-  }).filter(Boolean).join("、");
+    for (const [k, v] of Object.entries(RACE)) if (rest === k) { r = v; break; }
+    return (e + r) || seg;
+  }).filter(Boolean).join("或");
 }
 
 function fmt(n) {
@@ -66,14 +70,18 @@ function fmt(n) {
   return isNaN(v) ? String(n) : (Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/\.?0+$/, ""));
 }
 
-function parseConds(p) {
+function parseConds(p, name) {
   const c = [];
-  if (p.cdlh === "1") c.push("自身為隊長或戰友");
-  if (p.cdtl === "1") c.push("隊長與戰友相同");
-  if (p.cdls) c.push(`指定隊長 #${p.cdls.replace(/\//g, "、#")}`);
-  if (p.cdhs) c.push(`指定戰友 #${p.cdhs.replace(/\//g, "、#")}`);
-  if (p.cdms) c.push(`指定成員 #${p.cdms.replace(/\+/g, " & #")}`);
-  if (p.cdmt) { const ar = parseAR(p.cdmt); if (ar) c.push(`成員含 ${ar}`); }
+  if (p.cdlh === "1") {
+    const joiner = p.cdtl === "1" ? "及" : "或";
+    c.push(`以「${name}」作隊長${joiner}戰友`);
+  } else if (p.cdtl === "1") {
+    c.push("隊長與戰友為同一張卡");
+  }
+  if (p.cdls) c.push(`以「${p.cdls.replace(/\//g, "或")}」作隊長`);
+  if (p.cdhs) c.push(`以「${p.cdhs.replace(/\//g, "或")}」作戰友`);
+  if (p.cdms) c.push(`以「${p.cdms.replace(/\//g, "或")}」作隊員`);
+  if (p.cdmt) { const ar = parseAR(p.cdmt); if (ar) c.push(`隊中只有 ${ar} 成員`); }
   return c;
 }
 
@@ -91,7 +99,7 @@ function lsStone(v) {
 }
 
 // ==================== 主動技解析 ====================
-function parseAS(line) {
+function parseAS(line, name) {
   const ei = line.indexOf("="); if (ei < 0) return null;
   const type = line.slice(0, ei), rest = line.slice(ei + 1);
   try {
@@ -115,9 +123,9 @@ function parseAS(line) {
         if (p.RcC && p.RcC !== "-2") parts.push(`依 ${RACE_SLOT[p.RcC]} 欄落下對應屬性符石`);
         if (p.AA && p.AA !== "-1") {
           const attr = ELEM_NUM[p.AA] || p.AA;
-          if (p.FA && p.FA !== "0") parts.push(`引爆直傷（${attr}）：固定 ${p.FA} 點，無視 ${p.DB}% 防禦`);
+          if (p.FA && p.FA !== "0") parts.push(`引爆全體直傷（${attr}）：固定 ${p.FA} 點，無視 ${p.DB}% 防禦`);
           else {
-            let s = `引爆直傷（${attr}）`;
+            let s = `引爆全體直傷（${attr}）`;
             if (+p.RB > 0) s += `：每粒 × ${fmt(p.RB)} 倍攻`;
             if (+p.RBS > 0) s += `（強化 × ${fmt(p.RBS)}）`;
             if (+p.DB > 0) s += `，無視 ${p.DB}% 防禦`;
@@ -179,17 +187,21 @@ function parseAS(line) {
         const cl = rest.endsWith(",") ? rest.slice(0, -1) : rest;
         const p = parseKV(cl);
         const attr = p.attr === "-1" ? "無屬性" : (ELEM_NUM[p.attr] || p.attr);
-        const parts = [];
-        if (p.fix && p.fix !== "0") parts.push(`對敵全體造成固定 ${p.fix} 點${attr}傷害`);
-        else {
-          let s = `對敵全體造成${attr}屬性傷害`;
-          if (+p.mbA > 0) s += `（全隊攻擊力 × ${fmt(p.mbA)}）`;
-          if (+p.mbR > 0) s += `（含回復力 × ${fmt(p.mbR)}）`;
-          parts.push(s);
+        const dmgParts = [];
+
+        if (p.fix && p.fix !== "0") dmgParts.push(`固定 ${Number(p.fix).toLocaleString()} 點`);
+        if (p.mbA && p.mbA !== "0") dmgParts.push(`${p.mbA} 倍自身攻擊力`);
+        if (p.mbR && p.mbR !== "0") {
+          const max = p.mr && p.mr !== "0" ? `(最大 ${(Number(p.mbR) * Number(p.mr)).toLocaleString()} 點)` : "";
+          dmgParts.push(`依累積戰鬥回合倍化 ${Number(p.mbR).toLocaleString()} 點${max}`);
         }
-        if (+p.mr > 0) parts.push(`無視 ${p.mr}% 防禦`);
+        if (p.mbCC && p.mbCC !== "0") dmgParts.push(`依消除附加效果數量倍化 ${Number(p.mbCC).toLocaleString()} 點`);
+
+        const parts = [];
+        if (dmgParts.length) parts.push(`對敵全體造成 ${dmgParts.join("、")} 的${attr}傷害`);
+        if (p.iD && p.iD !== "0") parts.push(`無視 ${p.iD}% 防禦力`);
         if (p.iS === "1") parts.push("無視強化盾");
-        if (p.iA === "1") parts.push("無視所有技能");
+        if (p.iA === "1") parts.push("無視敵方所有技能");
         return { icon: "⚔️", title: "直接傷害", parts, conds: [] };
       }
       case "addGE": {
@@ -280,7 +292,7 @@ function parseAS(line) {
         const race = pts[3] === "-1" ? "全種族" : (RACE_NUM[pts[3]] || pts[3]);
         const target = EXATK_TGT[pts[4]] || pts[4];
         const pct = pts[5], src = EXATK_SRC[pts[6]] || pts[6];
-        const attrs = (pts[7] || "").split("_").map(a => EXATK_ATTR[a] || a).filter(Boolean);
+        const attrs = (pts[7] || "").split("_").map(a => a in EXATK_ATTR ? EXATK_ATTR[a] : a).filter(Boolean);
         const count = pts[8], icon2 = ICON_MAP[pts[9]] || "追打";
         const memDesc = `${elem !== "不分屬性" ? elem : ""}${race !== "全種族" ? race : ""}` || "所有成員";
         return {
@@ -292,11 +304,20 @@ function parseAS(line) {
       }
       case "possess": {
         const pts = rest.split(",");
-        const s1 = (pts[1] || "").split("_").map(v => STONE_NUM[v] || v).join("、");
-        const s2 = (pts[2] || "").split("_").map(v => STONE_NUM[v] || v).join("、");
-        const pc = (pts[3] || "").split("_").map(v => v + "%").join("、");
-        const icon2 = ICON_MAP[pts[4]] || "兼具";
-        return { icon: "🔗", title: `兼具（${icon2}）`, parts: [`${pts[0]}回合`, `${s1} 兼具 ${s2}（${pc}）`], conds: [] };
+        const noStack = pts[0];
+        const s1List = (pts[1] || "").split("_");
+        const s2List = (pts[2] || "").split("_");
+        const pctList = (pts[3] || "").split("_");
+
+        const pairs = s1List.map((s1, i) => {
+          const s1Name = LS_POSSESS_OF[s1] ?? s1;
+          const s2Name = LS_POSSESS_BY[s2List[i]] ?? s2List[i];
+          const pct = pctList[i] ?? "0";
+          return `${s1Name}符石兼具 ${pct}% ${s2Name}符石效果`;
+        });
+
+        const parts = [(noStack) + ("回合內，") +pairs.join("，")];
+        return { icon: "🔗", title: "兼具", parts, conds: [] };
       }
       case "chC": return { icon: "🔄", title: "變身", parts: [`變身為 #${rest}`], conds: [] };
       case "mrgC": return { icon: "⚡", title: "合體", parts: [], conds: [] };
@@ -339,11 +360,20 @@ function parseLS(line) {
       }
       case "possess": {
         const pts = rest.split(",");
-        const ldr = pts[0] === "1" ? "（僅隊長）" : "";
-        const s1 = (pts[1] || "").split("_").map(v => LS_POSSESS_OF[v] || v).join("、");
-        const s2 = (pts[2] || "").split("_").map(v => LS_POSSESS_BY[v] || v).join("、");
-        const pc = (pts[3] || "").split("_").map(v => v + "%").join("、");
-        return { icon: "🔗", title: `兼具${ldr}`, parts: [`${s1}符石 兼具 ${s2}符石（${pc}）`], conds: [] };
+        const noStack = pts[0] === "1";
+        const s1List = (pts[1] || "").split("_");
+        const s2List = (pts[2] || "").split("_");
+        const pctList = (pts[3] || "").split("_");
+
+        const pairs = s1List.map((s1, i) => {
+          const s1Name = LS_POSSESS_OF[s1] ?? s1;
+          const s2Name = LS_POSSESS_BY[s2List[i]] ?? s2List[i];
+          const pct = pctList[i] ?? "0";
+          return `${s1Name}符石兼具 ${pct}% ${s2Name}符石效果`;
+        });
+
+        const parts = [pairs.join("，") + (noStack ? "（不可疊加）" : "")];
+        return { icon: "🔗", title: "兼具", parts, conds: [] };
       }
       case "gsbc": {
         const pts = rest.split(",");
@@ -363,66 +393,149 @@ function parseLS(line) {
 }
 
 // ==================== 隊伍技解析 ====================
-function parseTS(line) {
+function parseTS(line, name) {
   const ei = line.indexOf("="); if (ei < 0) return null;
   const type = line.slice(0, ei), rest = line.slice(ei + 1);
   try {
     switch (type) {
       case "gEng": {
-        const p = parseKV(rest), conds = parseConds(p);
-        const parts = [`「${p.n}」：初始 ${p.oV}，範圍 ${p.miV}~${p.mxV}`];
-        const dsCs = (p.dsC || "").split("+"), dsAs = (p.dsA || "").split("+"), dsDs = (p.dsD || "").split("+"), dsEs = (p.dsE || "").split("+");
+        const p = parseKV(rest);
+        const conds = parseConds(p, name);
+        const parts = [`初值 ${p.oV}，最小 ${p.miV}，最大 ${p.mxV}`];
+
+        // 消符石集氣（多組）
+        const dsEs = (p.dsE || "").split("+");
+        const dsPs = (p.dsP || "").split("+");
+        const dsBs = (p.dsB || "").split("+");
+        const dsCs = (p.dsC || "").split("+");
+        const dsAs = (p.dsA || "").split("+");
+        const dsDs = (p.dsD || "").split("+");
         for (let i = 0; i < dsCs.length; i++) {
-          if (!dsCs[i] || !dsDs[i] || dsDs[i] === "0") continue;
-          const stone = dsAs[i] ? (ELEM[dsAs[i]] || dsAs[i]) + "符石" : "符石";
-          const mode = dsEs[i] === "0" ? "非強化" : dsEs[i] === "1" ? "強化" : "";
-          parts.push(`消 ${dsCs[i]} 粒${mode}${stone} → 集氣值 +${dsDs[i]}`);
+          if (!dsCs[i] || dsCs[i] === "0" || !dsDs[i] || dsDs[i] === "0") continue;
+          const freq = dsEs[i] === "0" ? "每回合" : "每次";
+          const pos = dsPs[i] === "0" ? "於自身直行" : "";
+          const batch = dsBs[i] === "0" ? "首批" : "累積";
+          const stone = dsAs[i] && dsAs[i] !== "-"
+            ? dsAs[i].split("_").map(s => STONE[s] || s).join("、")
+            : "任意符石";
+          parts.push(`${freq}${pos}${batch}消除 ${dsCs[i]} 粒${stone}時，集氣值增減 ${dsDs[i]}`);
         }
+
+        // 消除一組N粒以上
+        if (p.lkC && p.lkC !== "0" && p.lkD && p.lkD !== "0") {
+          const stone = p.lkA && p.lkA !== "-" && p.lkA !== ""
+            ? (STONE[p.lkA] || p.lkA) : "任意符石";
+          parts.push(`每消除一組 ${p.lkC} 粒或以上的${stone}時，集氣值增減 ${p.lkD}`);
+        }
+
+        // 生命力回復/扣減（hc block）
+        if (p.hcD && p.hcD !== "0") {
+          const mode = p.hcS === "0" ? "回復" : "扣減";
+          let s = `每次我方生命力${mode}時，集氣值增減 ${p.hcD}`;
+          if (p.hcM && p.hcM !== "0") s += `（每回合最多增減 ${p.hcM}）`;
+          parts.push(s);
+        }
+
+        // 生命力回復/扣減（hd block）
+        if (p.hdD && p.hdD !== "0") {
+          const mode = p.hdS === "1" ? "扣減" : "回復";
+          let s = `我方生命力每${mode} ${p.hdC} 時，集氣值增減 ${p.hdD}`;
+          if (p.hdM && p.hdM !== "0") s += `（每回合最多增減 ${p.hdM}）`;
+          parts.push(s);
+        }
+
+        // 成員發動技能
         if (p.acM && p.acD && p.acD !== "0") {
-          const acMStr = p.acM.startsWith("--") ? `「${p.acM.slice(2)}」系列` : p.acM;
-          parts.push(`發動${acMStr}主動技 → 集氣值 ${Number(p.acD) > 0 ? "+" : ""}${p.acD}`);
+          const acMStr = parseAR(p.acM) || p.acM;
+          parts.push(`每次 ${acMStr} 成員發動技能時，集氣值增減 ${p.acD}`);
         }
-        if (p.kB && p.kB !== "0") parts.push(`擊殺敵人 → 集氣值 +${p.kB}（持續 ${p.kD} 回合）`);
-        if (p.tF && p.tD && p.tD !== "0") parts.push(`每 ${p.tE} 回合觸發，集氣值 +${p.tD}（從第 ${p.tF} 回合開始）`);
-        if (p.kdB && p.kdB !== "0") parts.push(`擊倒敵人 → 集氣值 +${p.kdB}`);
-        if (p.kaC && p.kaC !== "0") parts.push(`累積攻擊 ${p.kaC} 次觸發`);
+
+        // 受攻擊/回合觸發
+        if (p.tD && p.tD !== "0") {
+          const timing = p.tE === "1" ? "受到攻擊" : "回合結束";
+          parts.push(`每 ${p.tF} 次${timing}時，集氣值增減 ${p.tD}`);
+        }
+
+        // 維持條件
+        if (p.kB && p.kB !== "0") {
+          parts.push(`§ 維持條件：當值 ≥ ${p.kB} 時，必須達成以下所有條件，否則回合結束時減少 ${p.kD}`);
+          if (p.kdC && p.kdC !== "0") {
+            const stone = p.kdA && p.kdA !== "-" && p.kdA !== ""
+              ? (STONE[p.kdA] || p.kdA) : "任意符石";
+            parts.push(`　首批消除 ${p.kdC} 粒${stone}`);
+          }
+          if (p.khP && p.khP !== "0") parts.push(`　生命力保持在 ${p.khP}% 以上`);
+          if (p.kaC && p.kaC !== "0") parts.push(`　${p.kaC} 個成員發動攻擊`);
+        }
+
+        // 特殊規則
+        if (p.fOM === "1") parts.push(`* 達到最大值時不再變動`);
+        if (p.rOD === "1") parts.push(`死亡時重置回初值`);
         return { icon: "⚡", title: `集氣值（${p.n || ""}）`, parts, conds };
       }
       case "mag": {
-        const p = parseKV(rest), conds = parseConds(p), parts = [];
+        const p = parseKV(rest), conds = parseConds(p, name), parts = [];
         const T = { A: "攻擊力", H: "生命力", R: "回復力" };
-        if (p.cBC) { const cards = p.cBC.split("+"), types = [...(p.tBC || "")], mags = (p.rBC || "").split("+").map(Number); cards.forEach((c, i) => { if (c) parts.push(`#${c.replace(/\//g, "、#")} ${T[types[i]] || "攻擊力"} × ${fmt(mags[i] / 1000)}`); }); }
-        if (p.arBAR) { const bars = p.arBAR.split("+"), types = [...(p.tBAR || "")], mags = (p.rBAR || "").split("+").map(Number); bars.forEach((bar, i) => { if (bar && mags[i]) parts.push(`${parseAR(bar) || "全隊"} ${T[types[i]] || "攻擊力"} × ${fmt(mags[i] / 1000)}`); }); }
+        if (p.cBC) {
+          const cards = p.cBC.split("+"), types = [...(p.tBC || "")], mags = (p.rBC || "").split("+").map(Number);
+          const strs = cards.map((c, i) => c ? `「${c.replace(/\//g, "、")}」${T[types[i]] || "攻擊力"}${fmt(mags[i] / 1000)}倍` : "").filter(Boolean);
+          if (strs.length) parts.push(strs.join("；"));
+        }
+        if (p.arBAR) {
+          const bars = p.arBAR.split("+"), types = [...(p.tBAR || "")], mags = (p.rBAR || "").split("+").map(Number);
+          const strs = bars.map((bar, i) => (bar && mags[i]) ? `${parseAR(bar) || "全隊"}${T[types[i]] || "攻擊力"}${fmt(mags[i] / 1000)}倍` : "").filter(Boolean);
+          if (strs.length) parts.push(strs.join("；"));
+        }
+        if (p.left === "1") parts.push("隊中有多個相同角色時，只有最左方角色生效");
         return { icon: "⭐", title: "倍率", parts: parts.length ? parts : ["設定倍率"], conds };
       }
       case "dynUp": {
-        const p = parseKV(rest), conds = parseConds(p), parts = [];
-        if (p.geGM !== undefined && p.geGR !== undefined) { const base = Number(p.geGM) / 1000, growth = Number(p.geGR) / 1000; if (growth > 0) parts.push(`基礎倍率 × ${fmt(base)}，每單位集氣值額外 +${fmt(growth)} 倍`); }
-        if (p.mem) { const m = Number(p.mem) / 1000; if (m > 0 && m !== 1) parts.push(`成員加成 × ${fmt(m)}`); }
-        if (p.mAR) { const ar = parseAR(p.mAR); if (ar) parts.push(`限 ${ar} 成員`); }
-        if (p.topGE && p.topGE !== "0") parts.push(`集氣值達上限時固定 × ${fmt(Number(p.topGE) / 1000)}`);
-        const geRF = (p.geRF || "").split("+").filter(Boolean), geRT = (p.geRT || "").split("+").filter(Boolean);
-        const geRM = (p.geRM || "").split("+").filter(Boolean), geRR2 = (p.geRR || "").split("+").filter(Boolean);
+        const p = parseKV(rest), conds = parseConds(p, name), parts = [];
+        const STAT = { "0": "攻擊力", "1": "回復力", "2": "生命力" };
+        const geRF = (p.geRF || "").split("+"), geRT = (p.geRT || "").split("+"), geRM = (p.geRM || "").split("+"), geRR = (p.geRR || "").split("+");
         for (let i = 0; i < geRF.length; i++) {
-          if ((!geRM[i] || geRM[i] === "0") && (!geRR2[i] || geRR2[i] === "0")) continue;
-          let s = `集氣值 ${geRF[i]}~${geRT[i]}：`;
-          if (geRM[i] && geRM[i] !== "0") s += `成員倍率 × ${fmt(Number(geRM[i]) / 1000)} `;
-          if (geRR2[i] && geRR2[i] !== "0") s += `回復倍率 × ${fmt(Number(geRR2[i]) / 1000)}`;
-          parts.push(s.trim());
+          if (!geRR[i] || geRR[i] === "0") continue;
+          parts.push(`${geRF[i]}≤集氣值≤${geRT[i]}時，${STAT[geRM[i]] || "倍率"} ${geRR[i]}%`);
+        }
+        if (p.geGR && p.geGR !== "0") parts.push(`集氣值越高，${STAT[p.geGM] || "倍率"}越高，最多 ${p.geGR}%`);
+        const MEM_ROLES = ["自身", "隊長", "戰友", "全隊"];
+        if (p.mem) {
+          const roles = [...p.mem].map((d, i) => d === "1" ? MEM_ROLES[i] : null).filter(Boolean);
+          if (roles.length) {
+            let s = `倍率作用對象：${roles.join("、")}`;
+            const ar = p.mAR ? parseAR(p.mAR) : "";
+            if (ar) s += `，但必須為${ar}`;
+            if (p.topGE === "1") s += "，以及只有當集氣值為全隊最高時才有作用";
+            parts.push(s);
+          }
         }
         return { icon: "⭐", title: "動態倍率（依集氣值）", parts: parts.length ? parts : ["依集氣值動態調整"], conds };
       }
       case "dh": {
-        const p = parseKV(rest), conds = parseConds(p), parts = [];
-        if (p.p && p.p !== "0") { const da = p.da ? [...p.da].map(c => ({ 0: "水", 1: "火", 2: "木", 3: "光", 4: "暗", 5: "心" }[c] || c)) : []; parts.push(`固定減少 ${p.p}% ${da.length ? da.join("、") + "屬性" : "所有屬性"}傷害`); }
+        const p = parseKV(rest), conds = parseConds(p, name), parts = [];
+        // 固定減少：把條件整合成同一句
+        if (p.p && p.p !== "0") {
+          const fixedConds = [];
+          if (+p.hpGt > 0) fixedConds.push(`我方生命力 ≥ ${p.hpGt}%`);
+          if (+p.atcGt > 0) fixedConds.push(`首消 ≥ ${p.atcGt} 種符石`);
+          if (p.da) { const st = [...p.da].map(c => STONE_NUM[c] || c); fixedConds.push(`消除${st.join("、")}`); }
+          const condStr = fixedConds.length ? `${fixedConds.join("，且")}時，` : "";
+          parts.push(`${condStr}固定減少 ${p.p}% 傷害`);
+        }
+        // 每消除一粒特定符石動態減傷
+        if (p.dynP && p.dynP !== "0") {
+          const st = STONE[p.dynAR] || "任意符石";
+          let s = `每消除一粒${st}，減少${p.dynP}%所受傷害`;
+          if (p.dynMP && p.dynMP !== "0") s += `，最多可減少${p.dynMP}%`;
+          parts.push(s);
+        }
         const geRF = (p.geRF || "").split("+").filter(Boolean), geRT = (p.geRT || "").split("+").filter(Boolean), geRR = (p.geRR || "").split("+").filter(Boolean);
         geRF.forEach((f, i) => { if (geRR[i] && geRR[i] !== "0") parts.push(`集氣值 ${f}~${geRT[i]} 時，減傷 ${geRR[i]}%`); });
-        if (+p.hpGt > 0) parts.push(`條件：HP ≥ ${p.hpGt}%`);
-        if (+p.atcGt > 0) parts.push(`條件：首消 ≥ ${p.atcGt} 種`);
+        if (p.geGR && p.geGR !== "0") parts.push(`集氣值越高，減傷越多，最多減少 ${p.geGR}%`);
         return { icon: "🛡️", title: "減傷", parts: parts.length ? parts : ["減少傷害"], conds };
       }
       case "dsv": {
-        const p = parseKV(rest), conds = parseConds(p);
+        const p = parseKV(rest), conds = parseConds(p, name);
         const counts = (p.c || "").split("+");
         const attrGroups = (p.a || "").split("+").map(g => g.split("_").map(s => STONE[s] || s).filter(Boolean).join("、"));
         const rules = counts.map((c, i) => c && c !== "0" ? `${c}粒（${attrGroups[i] || "任意"}）` : "").filter(Boolean);
@@ -434,52 +547,123 @@ function parseTS(line) {
         return { icon: "🔮", title: "改變消除方式", parts: parts.length ? parts : ["改變消除方式"], conds };
       }
       case "addtime": {
-        const p = parseKV(rest), conds = parseConds(p);
+        const p = parseKV(rest), conds = parseConds(p, name);
         const secs = Number(p.s) / 10;
         const parts = [`${TS_ADDTIME[p.m] || "延長"} ${secs} 秒`];
         if (+p.memAS > 0) parts.push(`每多1種屬性 +${Number(p.memAS) / 10}秒（最多 +${Number(p.maxS) / 10}秒）`);
         return { icon: "⏱️", title: "延長移動符石時間", parts, conds };
       }
       case "reduceCD": {
-        const p = parseKV(rest), conds = parseConds(p);
+        const p = parseKV(rest), conds = parseConds(p, name);
         const mars = p.mar ? p.mar.split("+") : [], ns2 = p.n ? p.n.split("+") : [];
         const parts = mars.map((m, i) => `${parseAR(m) || "全體"} CD -${ns2[i] || 0}`);
         return { icon: "⏳", title: "減CD", parts: parts.length ? parts : ["減少技能CD"], conds };
       }
       case "preAtk": {
-        const p = parseKV(rest), conds = parseConds(p);
-        const attr = p.attr === "-1" ? "無屬性" : (ELEM_NUM[p.attr] || p.attr);
-        const parts = [`造成${attr}屬性攻前傷害`];
-        if (+p.a > 0) parts.push(`全隊攻擊力合計 × ${p.a}`);
-        if (+p.p > 0) parts.push(`此卡攻擊力 × ${p.p}`);
+        const p = parseKV(rest), conds = parseConds(p, name), parts = [];
+        const attr = PREATK_ATTR[p.attr] || p.attr;
+        if (p.c && p.c !== "0" && p.a) {
+          let s = `每首批消除 ${p.c} 粒符石時，於發動攻擊前對全體敵人造成 ${p.a} 點${attr}傷害`;
+          if (p.mc && p.mc !== "0") s += `，最多 ${Number(p.a) * Number(p.mc) / Number(p.c)} 點`;
+          if (p.p && p.p !== "0") s += `；並將敵方所受此攻擊傷害的 ${p.p}% 轉化為我方生命力（只適用於未被擊斃的敵人）`;
+          parts.push(s);
+        }
         return { icon: "⚔️", title: "攻前傷害", parts, conds };
       }
       case "rec": {
-        const p = parseKV(rest), conds = parseConds(p);
+        const p = parseKV(rest), conds = parseConds(p, name);
         return { icon: "💚", title: "殺敵回血", parts: [`殺敵後回復 ${p.p}% 傷害量`], conds };
       }
       case "exAtk": {
-        const p = parseKV(rest), conds = parseConds(p), parts = [];
-        if (+p.fa > 0) parts.push(`攻擊力 × ${fmt(p.fa)}`);
-        if (p.mar) { const ar = parseAR(p.mar); if (ar) parts.push(`限 ${ar} 成員`); }
-        if (+p.cf > 0 && +p.ct > 0) parts.push(`消 ${p.cf}~${p.ct} C 時觸發`);
-        return { icon: "👊", title: "追打", parts: parts.length ? parts : ["追加攻擊"], conds };
+        const p = parseKV(rest);
+        const conds = parseConds(p, name);
+        const parts = [];
+
+        // 追打者
+        const amBits = (p.am || "0000").padStart(4, "0");
+        const amMap = ["自身", "隊長", "戰友", "全隊"];
+        const amList = [...amBits].map((b, i) => b === "1" ? amMap[i] : "").filter(Boolean);
+        const whoStr = amList.join("、") || "全隊";
+        const ar = p.mar ? parseAR(p.mar) : "";
+        parts.push(ar ? `追打者：${whoStr}，但必須為 ${ar}` : `追打者：${whoStr}`);
+
+        // 追打傷害
+        const dmgParts = [];
+        if (p.fa && p.fa !== "0") dmgParts.push(`${p.fa}%`);
+        if (p.pa && p.pa !== "0") dmgParts.push(`各追打者自身 ${p.pa}% 攻擊`);
+        if (dmgParts.length) parts.push(`追打傷害：${dmgParts.join(" + ")}`);
+
+        // 追打次數
+        const countParts = [];
+        if (p.cf && p.ct && !(p.cf === "0" && p.ct === "0")) {
+          countParts.push(`自身屬性隨機 ${p.cf}~${p.ct} 次`);
+        }
+        if (p.bsc && p.bsc !== "0" && p.bsmt && p.bsmt !== "0") {
+          const bsa = (p.bsa || "").split("_").map(s => STONE[s] || s).filter(Boolean).join("、");
+          let s = `每消除 ${p.bsc} 粒${bsa}追打自身屬性 ${p.bsmt} 次`;
+          if (p.bsmx && p.bsmx !== "0") s += `，最多 ${p.bsmx} 次`;
+          countParts.push(s);
+        }
+        if (p.baa) {
+          const baa = (p.baa || "").split("_").map(s => STONE[s] || s).filter(Boolean).join("、");
+          countParts.push(`${baa}各 1 次`);
+        }
+        if (countParts.length) parts.push(`追打次數：${countParts.join(" + ")}`);
+
+        return { icon: "👊", title: "追打", parts, conds };
       }
       case "genSt": {
-        const p = parseKV(rest), conds = parseConds(p), parts = [];
-        if (p.byAC_c && p.byAC_n && p.byAC_a) parts.push(`消 ${p.byAC_c} 粒特定符石 → 掉落 ${p.byAC_n} 粒${STONE_NUM[p.byAC_a] || p.byAC_a}`);
-        if (p.byCol) parts.push("依直行掉落特定符石");
+        const p = parseKV(rest), conds = parseConds(p, name), parts = [];
+        if (p.byCol) {
+          const stones = p.byCol.split("+").map(v => v === "-1" ? "隨機" : (STONE_NUM[v] || v).replace(/符石$/, ""));
+          parts.push(`依直行序由左至右，首批掉落「${stones.join("、")}」等符石`);
+        }
+        if (p.byAC_c && p.byAC_c !== "0" && p.byAC_n && p.byAC_n !== "0" && p.byAC_a) {
+          const mStone = BYAC_M[p.byAC_m] ?? p.byAC_m;
+          let s = `每首批消除 ${p.byAC_c} 粒${mStone}符石，將產生 ${p.byAC_n} 粒${STONE_NUM[p.byAC_a] || p.byAC_a}`;
+          if (p.byAC_ad && p.byAC_ad !== "0") s += `，最多 ${p.byAC_ad} 粒`;
+          if (p.byAC_f === "1") s += "（優先於消5掉1 強化的規則）";
+          parts.push(s);
+        }
+        if (p.odrF && p.odrT) {
+          const modeText = ORDR_MODE[p.odrM] ?? "";
+          parts.push(`從第 ${p.odrF} 批到第 ${p.odrT} 批掉落的符石會順序排列${modeText ? `（${modeText}）` : ""}`);
+        }
         return { icon: "🪨", title: "改變符石掉落", parts: parts.length ? parts : ["改變符石掉落"], conds };
       }
       case "Ignr1": {
-        const p = parseKV(rest), conds = parseConds(p), ig = [];
-        if (p.iC === "1") ig.push("無視凍結"); if (p.iS === "1") ig.push("無視石化"); if (p.iE === "1") ig.push("無視電擊");
-        if (p.cE === "1") ig.push("解除電擊"); if (p.cF === "1") ig.push("解除凍結"); if (p.cP === "1") ig.push("解除石化");
-        if (p.cR === "1") ig.push("解除符石障礙"); if (p.fTR === "1") ig.push("無視轉珠限制");
-        return { icon: "🔓", title: "無視/解除轉珠障礙", parts: ig.length ? ig : ["無視障礙"], conds };
+        const p = parseKV(rest);
+        const conds = parseConds(p, name);
+        const parts = [];
+
+        // 燃燒傷害
+        if (p.fDT && p.fDT > "0") parts.push(`燃燒傷害減至 ${p.fDT}`);
+        if (p.fTR === "1") parts.push(`燃燒傷害轉化為我方生命力`);
+
+        // 觸碰障礙仍可移動
+        if (p.iC === "1") parts.push(`觸碰「黏腐」位置時仍可移動符石`);
+        if (p.iS === "1") parts.push(`觸碰「射擊」位置時仍可移動符石`);
+        if (p.iE === "1") parts.push(`觸碰「電擊」位置時仍可移動符石`);
+
+        // 解除符石狀態
+        if (p.cE === "1") parts.push(`將移動符石觸碰的「電擊」符石狀態解除`);
+        if (p.cF === "1") parts.push(`將移動符石觸碰的「凍結」符石狀態解除`);
+        if (p.cP === "1") parts.push(`將移動符石觸碰的「石化」符石狀態解除`);
+        if (p.cR === "1") parts.push(`將移動符石觸碰的「化血」符石狀態解除`);
+
+        return { icon: "🔓", title: "無視或解除轉珠障礙", parts: parts.length ? parts : ["無視障礙"], conds };
       }
       case "Ignr2": {
-        const p = parseKV(rest), conds = parseConds(p), parts = [];
+        const p = parseKV(rest), conds = parseConds(p, name), parts = [];
+
+        // 追打者
+        const amBits = (p.am || "0000").padStart(4, "0");
+        const amMap = ["自身", "隊長", "戰友", "全隊"];
+        const amList = [...amBits].map((b, i) => b === "1" ? amMap[i] : "").filter(Boolean);
+        const whoStr = amList.join("、") || "全隊";
+        const ar = p.mar ? parseAR(p.mar) : "";
+        parts.push(ar ? `可無視者：${whoStr}，但必須為 ${ar}` : `可無視者：${whoStr}`);
+
         if (p.iAC && p.iAC !== "0") parts.push(`首消 ${p.aC} 種符石 → 無視${IGNR_NAME[p.iAC] || "限制"}`);
         if (p.iLS && p.iLS !== "0") { const st = (p.aLS || "").split("_").map(s => STONE[s] || s).join("、"); parts.push(`首消 ${p.ISC || p.lSC} 粒 ${st} → 無視${IGNR_NAME[p.iLS] || "限制"}`); }
         if (p.iCC && p.iCC !== "0") parts.push(`首消 ${p.cC} Combo → 無視${IGNR_NAME[p.iCC] || "限制"}`);
@@ -491,10 +675,10 @@ function parseTS(line) {
 }
 
 // ==================== 卡片解析 ====================
-function parseEffectBlock(str, ctx) {
+function parseEffectBlock(str, ctx, name) {
   if (!str) return [];
-  const fn = ctx === "ls" ? parseLS : ctx === "ts" ? parseTS : parseAS;
-  return str.split(";").map(s => s.trim()).filter(Boolean).map(fn).filter(Boolean);
+  const fn = ctx === "ls" ? parseLS : ctx === "ts" ? (line => parseTS(line, name)) : parseAS;
+  return str.split(";").map(s => s.trim()).filter(Boolean).map(s => fn(s, name)).filter(Boolean);
 }
 
 function parseCard(code) {
@@ -506,11 +690,11 @@ function parseCard(code) {
     const asStr = parts[1] || "";
     const skills = asStr.split(/;;/).filter(s => s.trim()).map(s => {
       const m = s.match(/^(.*?)=b=(.*?)\$s=(.*)$/s); if (!m) return null;
-      return { name: m[1], cd: m[2], effects: parseEffectBlock(m[3], "as") };
+      return { name: m[1], cd: m[2], effects: parseEffectBlock(m[3], "as", name) };
     }).filter(Boolean);
     const lsStr = (parts[2] || "").replace(/^.*?=s=/, "");
-    const leaderSkill = parseEffectBlock(lsStr, "ls");
-    const teamSkill = parseEffectBlock(parts[3] || "", "ts");
+    const leaderSkill = parseEffectBlock(lsStr, "ls", name);
+    const teamSkill = parseEffectBlock(parts[3] || "", "ts", name);
     return { no, name, hp, atk, rec, element, race, series, skills, leaderSkill, teamSkill, imgSrc: (parts[6] || "").trim() };
   } catch { return null; }
 }
