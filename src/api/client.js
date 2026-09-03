@@ -45,6 +45,9 @@ export const api = {
   createCard: (data) =>
     request("/cards", { method: "POST", body: JSON.stringify(data) }),
 
+  updateCard: (id, data) =>
+    request(`/cards/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
   deleteCard: (id) =>
     request(`/cards/${id}`, { method: "DELETE" }),
 

@@ -1,13 +1,15 @@
-import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { parseCard, extractSkillTags } from "../parser.js";
 
-export default function AddCardPage() {
+export default function EditCardPage() {
+  const { id } = useParams();
   const [cardCode, setCardCode] = useState("");
   const [preview, setPreview] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const navigate = useNavigate();
   const [imageSource, setImageSource] = useState("");
   const [description, setDescription] = useState("");
@@ -21,6 +23,23 @@ export default function AddCardPage() {
   const [cropY, setCropY] = useState(50);
   const [cropZoom, setCropZoom] = useState(1);
   const cropBoxRef = useRef(null);
+
+  useEffect(() => {
+    api.getCard(id).then(data => {
+      setCardCode(data.cardCode);
+      setImageSource(data.imageSource || "");
+      setDescription(data.description || "");
+      setImageUrl(data.imageUrl || "");
+      if (data.imageCrop) {
+        setCropX(data.imageCrop.x ?? 50);
+        setCropY(data.imageCrop.y ?? 50);
+        setCropZoom(data.imageCrop.zoom ?? 1);
+        setAdvOpen(true);
+      }
+      const result = parseCard(data.cardCode);
+      if (result) setPreview(result);
+    }).catch(() => navigate("/")).finally(() => setFetching(false));
+  }, [id]);
 
   function handleImageLoad(e) {
     const { naturalWidth: w, naturalHeight: h } = e.target;
@@ -49,7 +68,7 @@ export default function AddCardPage() {
     if (!preview) { setErr("請先預覽卡片"); return; }
     setLoading(true); setErr("");
     try {
-      await api.createCard({
+      await api.updateCard(id, {
         cardCode: cardCode.trim(),
         parsedName: preview.name,
         element: preview.element,
@@ -61,7 +80,7 @@ export default function AddCardPage() {
         skillTags: extractSkillTags(cardCode.trim()),
         description: description.trim()
       });
-      navigate("/");
+      navigate(`/card/${id}`);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -73,13 +92,15 @@ export default function AddCardPage() {
   const ELEM = { w:"水",f:"火",t:"木",l:"光",d:"暗" };
   const RACE = { G:"神",E:"魔",H:"人",A:"獸",D:"龍",S:"妖",M:"機" };
 
+  if (fetching) return <div style={{ textAlign: "center", padding: 60, color: "#9CA3AF" }}>載入中...</div>;
+
   return (
     <div style={{ minHeight:"100vh", background:"#F1F5F9", padding:"24px 16px", boxSizing:"border-box" }}>
       <div style={{ maxWidth:640, margin:"0 auto" }}>
 
         {/* 輸入區 */}
         <div style={{ background:"white", borderRadius:16, padding:20, marginBottom:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
-          <h2 style={{ margin:"0 0 16px", fontSize:20, fontWeight:800, color:"#1F2937" }}>新增卡片</h2>
+          <h2 style={{ margin:"0 0 16px", fontSize:20, fontWeight:800, color:"#1F2937" }}>編輯卡片</h2>
           <textarea value={cardCode} onChange={e => { setCardCode(e.target.value); setPreview(null); }}
             placeholder="貼上卡片碼..."
             style={{ width:"100%", height:100, borderRadius:10, border:"1.5px solid #D1D5DB", padding:"10px 12px", fontSize:12, fontFamily:"monospace", resize:"vertical", boxSizing:"border-box", outline:"none" }} />
@@ -167,13 +188,17 @@ export default function AddCardPage() {
           {err && <div style={{ color:"#EF4444", fontSize:13, margin:"8px 0" }}>{err}</div>}
 
           <div style={{ display:"flex", gap:10, marginTop:10 }}>
+            <button onClick={() => navigate(`/card/${id}`)}
+              style={{ padding:"10px 16px", background:"#F3F4F6", color:"#6B7280", border:"none", borderRadius:10, fontWeight:700, cursor:"pointer", fontSize:14 }}>
+              取消
+            </button>
             <button onClick={handlePreview}
               style={{ flex:1, padding:"10px 0", background:"#F3F4F6", color:"#1F2937", border:"none", borderRadius:10, fontWeight:700, cursor:"pointer", fontSize:14 }}>
               預覽
             </button>
             <button onClick={handleSubmit} disabled={!preview || loading}
               style={{ flex:1, padding:"10px 0", background: preview ? "#1F2937" : "#9CA3AF", color:"white", border:"none", borderRadius:10, fontWeight:800, cursor: preview ? "pointer" : "not-allowed", fontSize:14 }}>
-              {loading ? "上傳中..." : "確認新增"}
+              {loading ? "儲存中..." : "確認儲存"}
             </button>
           </div>
         </div>
@@ -200,7 +225,7 @@ export default function AddCardPage() {
             </div>
 
             <div style={{ fontSize:13, color:"#6B7280", textAlign:"center" }}>
-              確認資訊無誤後點「確認新增」上傳
+              確認資訊無誤後點「確認儲存」更新
             </div>
           </div>
         )}

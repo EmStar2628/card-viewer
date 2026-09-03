@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { parseCard } from "../parser.js";
 
@@ -44,6 +44,8 @@ function SkillBlock({ skill, index, elemColor }) {
 export default function CardDetailPage({ loggedIn, username }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [card, setCard] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [comments, setComments] = useState([]);
@@ -52,11 +54,19 @@ export default function CardDetailPage({ loggedIn, username }) {
   const [commentText, setCommentText] = useState("");
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [filteredIds, setFilteredIds] = useState(null);
+
+  const filterParams = Object.fromEntries(searchParams.entries());
 
   useEffect(() => {
     fetchCard();
     fetchComments();
   }, [id]);
+
+  useEffect(() => {
+    api.getCards(filterParams).then(list => setFilteredIds(list.map(c => c._id))).catch(() => setFilteredIds(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
   async function fetchCard() {
     try {
@@ -114,6 +124,23 @@ export default function CardDetailPage({ loggedIn, username }) {
     } catch (e) { console.error(e); }
   }
 
+  const currentIndex = filteredIds ? filteredIds.indexOf(id) : -1;
+  const prevId = currentIndex > 0 ? filteredIds[currentIndex - 1] : null;
+  const nextId = currentIndex >= 0 && currentIndex < filteredIds?.length - 1 ? filteredIds[currentIndex + 1] : null;
+
+  function goTo(otherId) {
+    navigate(`/card/${otherId}${location.search}`);
+  }
+
+  const FILTER_ELEM = { w: "水", f: "火", t: "木", l: "光", d: "暗" };
+  const FILTER_RACE = { G: "神", E: "魔", H: "人", A: "獸", D: "龍", S: "妖", M: "機" };
+  const filterBadges = [];
+  if (filterParams.q) filterBadges.push(`關鍵字：${filterParams.q}`);
+  if (filterParams.element) filterBadges.push(`${FILTER_ELEM[filterParams.element] || filterParams.element}屬`);
+  if (filterParams.race) filterBadges.push(`${FILTER_RACE[filterParams.race] || filterParams.race}族`);
+  if (filterParams.tags) filterParams.tags.split(",").filter(Boolean).forEach(t => filterBadges.push(t));
+  if (filterParams.mine === "true") filterBadges.push("僅顯示我新增的卡片");
+
   if (loading) return <div style={{ textAlign: "center", padding: 60, color: "#9CA3AF" }}>載入中...</div>;
   if (!card || !parsed) return null;
 
@@ -126,7 +153,35 @@ export default function CardDetailPage({ loggedIn, username }) {
       <div style={{ maxWidth: 680, margin: "0 auto" }}>
 
         {/* 返回 */}
-        <div onClick={() => navigate("/")} style={{ color: "#6B7280", fontSize: 14, cursor: "pointer", marginBottom: 16 }}>← 返回列表</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div onClick={() => navigate(`/${location.search}`)} style={{ color: "#6B7280", fontSize: 14, cursor: "pointer" }}>← 返回列表</div>
+          {filteredIds && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {currentIndex >= 0 && (
+                <span style={{ fontSize: 12, color: "#9CA3AF", whiteSpace: "nowrap" }}>
+                  第 {currentIndex + 1} 筆 / 共 {filteredIds.length} 筆
+                </span>
+              )}
+              <button onClick={() => prevId && goTo(prevId)} disabled={!prevId}
+                style={{ padding: "6px 14px", background: prevId ? "#F3F4F6" : "#F9FAFB", color: prevId ? "#374151" : "#D1D5DB", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: prevId ? "pointer" : "default" }}>
+                ◀ 上一張
+              </button>
+              <button onClick={() => nextId && goTo(nextId)} disabled={!nextId}
+                style={{ padding: "6px 14px", background: nextId ? "#F3F4F6" : "#F9FAFB", color: nextId ? "#374151" : "#D1D5DB", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: nextId ? "pointer" : "default" }}>
+                下一張 ▶
+              </button>
+            </div>
+          )}
+        </div>
+
+        {filterBadges.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            <span style={{ fontSize: 12, color: "#9CA3AF", padding: "4px 0" }}>目前篩選：</span>
+            {filterBadges.map((b, i) => (
+              <span key={i} style={{ fontSize: 12, background: "#E0E7FF", color: "#3730A3", borderRadius: 12, padding: "3px 10px" }}>{b}</span>
+            ))}
+          </div>
+        )}
 
         <div style={{ background: "white", borderRadius: 18, padding: 20, boxShadow: "0 2px 16px rgba(0,0,0,0.07)", marginBottom: 16 }}>
 
@@ -151,6 +206,21 @@ export default function CardDetailPage({ loggedIn, username }) {
               ))}
             </div>
           </div>
+
+          {/* 卡片圖片 */}
+          {card.imageUrl && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+              <div style={{ width: "80%", aspectRatio: "1.5 / 1", borderRadius: 14, overflow: "hidden", background: "#F3F4F6" }}>
+                <img src={card.imageUrl} loading="lazy" alt={parsed.name}
+                  style={{
+                    width: "100%", height: "100%", objectFit: "cover", display: "block",
+                    objectPosition: card.imageCrop ? `${card.imageCrop.x}% ${card.imageCrop.y}%` : "50% 50%",
+                    transform: `scale(${card.imageCrop?.zoom || 1})`,
+                    transformOrigin: card.imageCrop ? `${card.imageCrop.x}% ${card.imageCrop.y}%` : "50% 50%"
+                  }} />
+              </div>
+            </div>
+          )}
 
           {/* 技能 */}
           {parsed.skills.length > 0 && (
@@ -202,6 +272,11 @@ export default function CardDetailPage({ loggedIn, username }) {
               <button onClick={handleLike} style={{ padding: "7px 16px", background: liked ? "#FEE2E2" : "#F3F4F6", color: liked ? "#EF4444" : "#374151", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
                 ❤️ {likeCount}
               </button>
+              {loggedIn && card.owner?.username === username && (
+                <button onClick={() => navigate(`/card/${id}/edit${location.search}`)} style={{ padding: "7px 16px", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                  編輯
+                </button>
+              )}
               {loggedIn && card.owner?.username === username && (
                 <button onClick={handleDeleteCard} style={{ padding: "7px 16px", background: "#FEE2E2", color: "#EF4444", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
                   刪除

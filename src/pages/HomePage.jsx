@@ -13,14 +13,16 @@ const ALL_TAGS = {
   "隊伍技": ["集氣值系統","隊伍倍率","動態倍率","隊伍減傷","延長移動時間","減CD","攻前傷害","殺敵回血","隊伍追打","改變掉落","無視轉珠障礙","無視攻擊限制","隊伍改變消除"],
 };
 
-export default function HomePage({ isAdmin }) {
+export default function HomePage({ isAdmin, loggedIn }) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [element, setElement] = useState("");
   const [race, setRace] = useState("");
   const [selectedTags, setSelectedTags] = useState([]);
+  const [onlyMine, setOnlyMine] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [appliedParams, setAppliedParams] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => { fetchCards(); }, []);
@@ -43,11 +45,14 @@ export default function HomePage({ isAdmin }) {
     if (element) params.element = element;
     if (race) params.race = race;
     if (selectedTags.length > 0) params.tags = selectedTags.join(",");
+    if (onlyMine) params.mine = "true";
+    setAppliedParams(params);
     fetchCards(params);
   }
 
   function handleReset() {
-    setQ(""); setElement(""); setRace(""); setSelectedTags([]);
+    setQ(""); setElement(""); setRace(""); setSelectedTags([]); setOnlyMine(false);
+    setAppliedParams({});
     fetchCards();
   }
 
@@ -113,6 +118,12 @@ export default function HomePage({ isAdmin }) {
           {/* 進階搜尋：標籤 */}
           {showAdvanced && (
             <div style={{ borderTop:"1px solid #F3F4F6", paddingTop:14 }}>
+              {loggedIn && (
+                <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#374151", marginBottom:14, cursor:"pointer" }}>
+                  <input type="checkbox" checked={onlyMine} onChange={e => setOnlyMine(e.target.checked)} />
+                  僅顯示我新增的卡片
+                </label>
+              )}
               {Object.entries(ALL_TAGS).map(([category, tags]) => (
                 <div key={category} style={{ marginBottom:12 }}>
                   <div style={{ fontSize:12, color:"#9CA3AF", fontWeight:700, marginBottom:6 }}>{category}</div>
@@ -148,7 +159,10 @@ export default function HomePage({ isAdmin }) {
         ) : (
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(240px, 1fr))", gap:16 }}>
             {cards.map(card => (
-              <div key={card._id} onClick={() => navigate(`/card/${card._id}`)}
+              <div key={card._id} onClick={() => {
+                const qs = new URLSearchParams(appliedParams).toString();
+                navigate(`/card/${card._id}${qs ? `?${qs}` : ""}`);
+              }}
                 style={{ background:"white", borderRadius:14, overflow:"hidden", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", cursor:"pointer" }}
                 onMouseEnter={e => e.currentTarget.style.transform="translateY(-2px)"}
                 onMouseLeave={e => e.currentTarget.style.transform="none"}>

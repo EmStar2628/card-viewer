@@ -6,6 +6,7 @@ import HomePage from "./pages/HomePage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import CardDetailPage from "./pages/CardDetailPage.jsx";
 import AddCardPage from "./pages/AddCardPage.jsx";
+import EditCardPage from "./pages/EditCardPage.jsx";
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
@@ -45,10 +46,11 @@ export default function App() {
 
       {/* 頁面 */}
       <Routes>
-        <Route path="/" element={<HomePage isAdmin={isAdmin} />} />
+        <Route path="/" element={<HomePage isAdmin={isAdmin} loggedIn={loggedIn} username={username} />} />
         <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
         <Route path="/card/:id" element={<CardDetailPage loggedIn={loggedIn} username={username} isAdmin={isAdmin} />} />
         <Route path="/add" element={loggedIn ? <AddCardPage /> : <Navigate to="/login" />} />
+        <Route path="/card/:id/edit" element={loggedIn ? <EditCardPage /> : <Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
   );
