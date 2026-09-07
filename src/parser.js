@@ -619,13 +619,13 @@ function parseTS(line, name) {
           parts.push(`依直行序由左至右，首批掉落「${stones.join("、")}」等符石`);
         }
         if (p.byAC_c && p.byAC_c !== "0" && p.byAC_n && p.byAC_n !== "0" && p.byAC_a) {
-          const mStone = BYAC_M[p.byAC_m] ?? p.byAC_m;
+          const mStone = BYAC_M[p.byAC_ad] ?? p.byAC_ad;
           let s = `每首批消除 ${p.byAC_c} 粒${mStone}符石，將產生 ${p.byAC_n} 粒${STONE_NUM[p.byAC_a] || p.byAC_a}`;
-          if (p.byAC_ad && p.byAC_ad !== "0") s += `，最多 ${p.byAC_ad} 粒`;
+          if (p.byAC_m && p.byAC_m !== "0") s += `，最多 ${p.byAC_m} 粒`;
           if (p.byAC_f === "1") s += "（優先於消5掉1 強化的規則）";
           parts.push(s);
         }
-        if (p.odrF && p.odrT) {
+        if (p.odrF && p.odrF !== "0" && p.odrT && p.odrT !== "0") {
           const modeText = ORDR_MODE[p.odrM] ?? "";
           parts.push(`從第 ${p.odrF} 批到第 ${p.odrT} 批掉落的符石會順序排列${modeText ? `（${modeText}）` : ""}`);
         }
