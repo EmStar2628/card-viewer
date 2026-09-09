@@ -130,10 +130,10 @@ export default function AddCardPage() {
 
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>
-              宣傳貼文網址 <span style={{ color: "#9CA3AF" }}>（選填）</span>
+              fb 貼文網址 <span style={{ color: "#9CA3AF" }}>（選填）</span>
             </div>
             <input value={promoUrl} onChange={e => setPromoUrl(e.target.value)}
-              placeholder="例如：社團 FB 宣傳貼文連結"
+              placeholder="例如：社團 FB 貼文連結"
               style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
           </div>
 
@@ -196,7 +196,7 @@ export default function AddCardPage() {
               </div>
             )}
           </div>
-          
+
           {/* 進階設定：卡片圖片 */}
           <div style={{ marginTop: 12 }}>
             <div onClick={() => setAdvOpen(o => !o)}
