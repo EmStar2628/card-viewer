@@ -254,6 +254,13 @@ export default function CardDetailPage({ loggedIn, username }) {
             </div>
           )}
 
+          {card.promoUrl && (
+            <div style={{ fontSize: 13, color: "#6B7280", padding: "10px 0", borderTop: "1px solid #E5E7EB" }}>
+              📣 宣傳貼文：
+              <a href={card.promoUrl} target="_blank" rel="noreferrer" style={{ color: "#3B82F6", marginLeft: 4 }}>{card.promoUrl}</a>
+            </div>
+          )}
+
           {card.description && (
             <div style={{ fontSize: 14, color: "#374151", padding: "10px 0", borderTop: "1px solid #E5E7EB", lineHeight: 1.7 }}>
               📝 補充說明：
@@ -263,12 +270,25 @@ export default function CardDetailPage({ loggedIn, username }) {
 
           {/* 操作列 */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
-            <div style={{ fontSize: 13, color: "#9CA3AF" }}>by {card.owner?.username}</div>
+            <div style={{ fontSize: 13, color: "#9CA3AF" }}>
+              by {card.proxySubmit
+                ? <>{card.authorName || "未知作者"}<strong style={{ color: "#374151" }}>（{card.proxyName}代投）</strong></>
+                : (card.authorName || card.owner?.username)}
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={handleCopy}
-                style={{ padding:"7px 16px", background: copied ? "#D1FAE5" : "#F3F4F6", color: copied ? "#059669" : "#374151", border:"none", borderRadius:8, fontWeight:700, cursor:"pointer", fontSize:13 }}>
-                {copied ? "已複製 ✓" : "複製卡片碼"}
-              </button>
+              {(() => {
+                const canCopy = card.copyEnabled !== false || card.owner?.username === username;
+                return canCopy ? (
+                  <button onClick={handleCopy}
+                    style={{ padding:"7px 16px", background: copied ? "#D1FAE5" : "#F3F4F6", color: copied ? "#059669" : "#374151", border:"none", borderRadius:8, fontWeight:700, cursor:"pointer", fontSize:13 }}>
+                    {copied ? "已複製 ✓" : "複製卡片碼"}
+                  </button>
+                ) : (
+                  <span title="此卡片作者關閉了複製卡片碼的權限" style={{ padding:"7px 16px", background: "#F9FAFB", color: "#D1D5DB", border:"none", borderRadius:8, fontWeight:700, fontSize:13, cursor: "not-allowed" }}>
+                    🔒 複製卡片碼
+                  </span>
+                );
+              })()}
               <button onClick={handleLike} style={{ padding: "7px 16px", background: liked ? "#FEE2E2" : "#F3F4F6", color: liked ? "#EF4444" : "#374151", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
                 ❤️ {likeCount}
               </button>

@@ -75,4 +75,10 @@ export const api = {
 
   deleteAnnouncement: (id) =>
     request(`/announcements/${id}`, { method: "DELETE" }),
+
+  // 個人化設定（我的最愛、置頂、置底、屏蔽）
+  getPreferences: () => request("/preferences"),
+
+  setPreference: (cardId, data) =>
+    request(`/preferences/${cardId}`, { method: "PUT", body: JSON.stringify(data) }),
 };

@@ -1,235 +1,285 @@
-import { useState, useRef, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
-import { parseCard, extractSkillTags } from "../parser.js";
+import AnnouncementPanel from "../components/AnnouncementPanel.jsx";
 
-export default function EditCardPage() {
-  const { id } = useParams();
-  const [cardCode, setCardCode] = useState("");
-  const [preview, setPreview] = useState(null);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(true);
+const ELEM = { w:"水",f:"火",t:"木",l:"光",d:"暗" };
+const ELEM_COLOR = { w:"#3B82F6",f:"#EF4444",t:"#22C55E",l:"#CA8A04",d:"#A855F7" };
+const RACE = { G:"神",E:"魔",H:"人",A:"獸",D:"龍",S:"妖",M:"機" };
+
+const ALL_TAGS = {
+  "主動技": ["解鎖","清除附加效果","引爆符石","轉版","動態轉版","轉行列","蓄能轉化","固定版面","直接傷害","增減集氣值","增攻","增回","減傷","主動改變消除","延長排珠","排珠","追打","主動兼具","變身","合體"],
+  "隊長技": ["隊長倍率","隊長動態倍率","隊長減傷","隊長兼具","隊長改變消除","消Combo掉落","隊長延長移動時間"],
+  "隊伍技": ["集氣值系統","隊伍倍率","動態倍率","隊伍減傷","延長移動時間","減CD","攻前傷害","殺敵回血","隊伍追打","改變掉落","無視轉珠障礙","無視攻擊限制","隊伍改變消除"],
+};
+
+export default function HomePage({ isAdmin, loggedIn }) {
+  const [cards, setCards] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [element, setElement] = useState("");
+  const [race, setRace] = useState("");
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [showBlocked, setShowBlocked] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [appliedParams, setAppliedParams] = useState({});
+  const [prefs, setPrefs] = useState({});
   const navigate = useNavigate();
-  const [imageSource, setImageSource] = useState("");
-  const [description, setDescription] = useState("");
-
-  // 進階設定：卡片圖片
-  const [advOpen, setAdvOpen] = useState(false);
-  const [imageUrl, setImageUrl] = useState("");
-  const [imgOk, setImgOk] = useState(false);
-  const [imgWarning, setImgWarning] = useState("");
-  const [cropX, setCropX] = useState(50);
-  const [cropY, setCropY] = useState(50);
-  const [cropZoom, setCropZoom] = useState(1);
-  const cropBoxRef = useRef(null);
 
   useEffect(() => {
-    api.getCard(id).then(data => {
-      setCardCode(data.cardCode);
-      setImageSource(data.imageSource || "");
-      setDescription(data.description || "");
-      setImageUrl(data.imageUrl || "");
-      if (data.imageCrop) {
-        setCropX(data.imageCrop.x ?? 50);
-        setCropY(data.imageCrop.y ?? 50);
-        setCropZoom(data.imageCrop.zoom ?? 1);
-        setAdvOpen(true);
-      }
-      const result = parseCard(data.cardCode);
-      if (result) setPreview(result);
-    }).catch(() => navigate("/")).finally(() => setFetching(false));
-  }, [id]);
+    fetchCards();
+    if (loggedIn) fetchPrefs();
+  }, []);
 
-  function handleImageLoad(e) {
-    const { naturalWidth: w, naturalHeight: h } = e.target;
-    setImgOk(true);
-    if (w > 2000 || h > 2000) {
-      setImgWarning(`圖片解析度較高（${w}×${h}），建議先壓縮再使用，載入速度會比較快`);
-    } else {
-      setImgWarning("");
+  async function fetchPrefs() {
+    try {
+      const list = await api.getPreferences();
+      const map = {};
+      list.forEach(p => { map[p.cardId] = { favorite: p.favorite, pin: p.pin, blocked: p.blocked }; });
+      setPrefs(map);
+    } catch (e) {
+      console.error(e);
     }
   }
 
-  function handleImageError() {
-    setImgOk(false);
-    setImgWarning("圖片網址載入失敗，請確認網址是否正確");
+  function getPref(cardId) {
+    return prefs[cardId] || { favorite: false, pin: "none", blocked: false };
   }
 
-  function handlePreview() {
-    if (!cardCode.trim()) { setErr("請貼上卡片碼"); return; }
-    const result = parseCard(cardCode.trim());
-    if (!result) { setErr("卡片碼格式有誤"); return; }
-    setPreview(result);
-    setErr("");
-  }
-
-  async function handleSubmit() {
-    if (!preview) { setErr("請先預覽卡片"); return; }
-    setLoading(true); setErr("");
+  async function togglePref(cardId, field, value) {
+    setPrefs(prev => ({ ...prev, [cardId]: { ...getPref(cardId), [field]: value } }));
     try {
-      await api.updateCard(id, {
-        cardCode: cardCode.trim(),
-        parsedName: preview.name,
-        element: preview.element,
-        race: preview.race,
-        series: preview.series,
-        imageSource: imageSource.trim(),
-        imageUrl: imageUrl.trim(),
-        imageCrop: imageUrl.trim() ? { x: cropX, y: cropY, zoom: cropZoom } : null,
-        skillTags: extractSkillTags(cardCode.trim()),
-        description: description.trim()
-      });
-      navigate(`/card/${id}`);
+      await api.setPreference(cardId, { [field]: value });
     } catch (e) {
-      setErr(e.message);
+      console.error(e);
+    }
+  }
+
+  async function fetchCards(params = {}) {
+    setLoading(true);
+    try {
+      const data = await api.getCards(params);
+      setCards(data);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   }
 
-  const ELEM_COLOR = { w:"#3B82F6",f:"#EF4444",t:"#22C55E",l:"#CA8A04",d:"#A855F7" };
-  const ELEM = { w:"水",f:"火",t:"木",l:"光",d:"暗" };
-  const RACE = { G:"神",E:"魔",H:"人",A:"獸",D:"龍",S:"妖",M:"機" };
+  function handleSearch() {
+    const params = {};
+    if (q.trim()) params.q = q.trim();
+    if (element) params.element = element;
+    if (race) params.race = race;
+    if (selectedTags.length > 0) params.tags = selectedTags.join(",");
+    if (onlyMine) params.mine = "true";
+    setAppliedParams(params);
+    fetchCards(params);
+  }
 
-  if (fetching) return <div style={{ textAlign: "center", padding: 60, color: "#9CA3AF" }}>載入中...</div>;
+  function handleReset() {
+    setQ(""); setElement(""); setRace(""); setSelectedTags([]); setOnlyMine(false); setOnlyFavorites(false);
+    setAppliedParams({});
+    fetchCards();
+  }
+
+  function toggleTag(tag) {
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  }
 
   return (
     <div style={{ minHeight:"100vh", background:"#F1F5F9", padding:"24px 16px", boxSizing:"border-box" }}>
-      <div style={{ maxWidth:640, margin:"0 auto" }}>
+      <div style={{ maxWidth:800, margin:"0 auto" }}>
 
-        {/* 輸入區 */}
-        <div style={{ background:"white", borderRadius:16, padding:20, marginBottom:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
-          <h2 style={{ margin:"0 0 16px", fontSize:20, fontWeight:800, color:"#1F2937" }}>編輯卡片</h2>
-          <textarea value={cardCode} onChange={e => { setCardCode(e.target.value); setPreview(null); }}
-            placeholder="貼上卡片碼..."
-            style={{ width:"100%", height:100, borderRadius:10, border:"1.5px solid #D1D5DB", padding:"10px 12px", fontSize:12, fontFamily:"monospace", resize:"vertical", boxSizing:"border-box", outline:"none" }} />
+        <AnnouncementPanel isAdmin={isAdmin} />
 
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>
-              圖片來源 <span style={{ color: "#9CA3AF" }}>（選填）</span>
-            </div>
-            <input value={imageSource} onChange={e => setImageSource(e.target.value)}
-              placeholder="例如：畫師或圖片連結"
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
+        {/* 回饋問卷 */}
+        <div style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:16, padding:"14px 20px", marginBottom:20, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div>
+            <div style={{ fontWeight:700, fontSize:15, color:"#1D4ED8", marginBottom:2 }}>📋 測試版回饋問卷</div>
+            <div style={{ fontSize:13, color:"#3B82F6" }}>歡迎填寫問卷幫助改進！</div>
           </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>
-              補充說明 <span style={{ color: "#9CA3AF" }}>（選填）</span>
-            </div>
-            <textarea value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="例如：平衡說明、特殊效果、使用限制..."
-              style={{ width: "100%", height: 80, padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none", resize: "vertical" }} />
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div onClick={() => setAdvOpen(o => !o)}
-              style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#F3F4F6", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#374151", userSelect: "none" }}>
-              <span>⚙️ 進階設定（卡片圖片）</span>
-              <span>{advOpen ? "▲" : "▼"}</span>
-            </div>
-
-            {advOpen && (
-              <div style={{ border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 10px 10px", padding: 14 }}>
-                <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>圖片網址</div>
-                <input value={imageUrl} onChange={e => { setImageUrl(e.target.value); setImgOk(false); setImgWarning(""); }}
-                  placeholder="貼上要顯示的卡片圖片網址"
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
-
-                {imageUrl.trim() && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 6 }}>
-                      預覽（用下方拉桿調整焦點位置）
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <div ref={cropBoxRef}
-                        style={{ position: "relative", flex: 1, aspectRatio: "1.5 / 1", borderRadius: 10, overflow: "hidden", background: "#F3F4F6" }}>
-                        <img src={imageUrl} onLoad={handleImageLoad} onError={handleImageError}
-                          style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: `${cropX}% ${cropY}%`, transform: `scale(${cropZoom})`, transformOrigin: `${cropX}% ${cropY}%`, display: "block" }} />
-                        {imgOk && (
-                          <div style={{ position: "absolute", left: `${cropX}%`, top: `${cropY}%`, width: 14, height: 14, marginLeft: -7, marginTop: -7, borderRadius: "50%", border: "2px solid white", boxShadow: "0 0 0 1px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
-                        )}
-                      </div>
-                      {imgOk && (
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28 }}>
-                          <input type="range" min="0" max="100" value={cropY} orient="vertical"
-                            onChange={e => setCropY(Number(e.target.value))}
-                            style={{ WebkitAppearance: "slider-vertical", width: 8, height: "100%" }} />
-                        </div>
-                      )}
-                    </div>
-                    {imgOk && (
-                      <div style={{ marginTop: 8 }}>
-                        <input type="range" min="0" max="100" value={cropX}
-                          onChange={e => setCropX(Number(e.target.value))}
-                          style={{ width: "100%" }} />
-                      </div>
-                    )}
-                    {imgOk && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
-                        <span style={{ fontSize: 12, color: "#6B7280", whiteSpace: "nowrap" }}>縮放 {cropZoom.toFixed(2)}x</span>
-                        <input type="range" min="1" max="3" step="0.05" value={cropZoom}
-                          onChange={e => setCropZoom(Number(e.target.value))}
-                          style={{ flex: 1 }} />
-                        <button type="button" onClick={() => { setCropX(50); setCropY(50); setCropZoom(1); }}
-                          style={{ fontSize: 12, color: "#374151", background: "#F3F4F6", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" }}>
-                          重設
-                        </button>
-                      </div>
-                    )}
-                    {imgWarning && <div style={{ fontSize: 12, color: "#D97706", marginTop: 6 }}>⚠️ {imgWarning}</div>}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {err && <div style={{ color:"#EF4444", fontSize:13, margin:"8px 0" }}>{err}</div>}
-
-          <div style={{ display:"flex", gap:10, marginTop:10 }}>
-            <button onClick={() => navigate(`/card/${id}`)}
-              style={{ padding:"10px 16px", background:"#F3F4F6", color:"#6B7280", border:"none", borderRadius:10, fontWeight:700, cursor:"pointer", fontSize:14 }}>
-              取消
-            </button>
-            <button onClick={handlePreview}
-              style={{ flex:1, padding:"10px 0", background:"#F3F4F6", color:"#1F2937", border:"none", borderRadius:10, fontWeight:700, cursor:"pointer", fontSize:14 }}>
-              預覽
-            </button>
-            <button onClick={handleSubmit} disabled={!preview || loading}
-              style={{ flex:1, padding:"10px 0", background: preview ? "#1F2937" : "#9CA3AF", color:"white", border:"none", borderRadius:10, fontWeight:800, cursor: preview ? "pointer" : "not-allowed", fontSize:14 }}>
-              {loading ? "儲存中..." : "確認儲存"}
-            </button>
-          </div>
+          <a href="https://docs.google.com/forms/d/e/1FAIpQLSfrMhEWAE3ft4_kOEFmOkLvQr-71fFYEV4TlnT2o9CAoe6CMA/viewform?usp=publish-editor"
+            target="_blank" rel="noreferrer"
+            style={{ padding:"9px 18px", background:"#1D4ED8", color:"white", borderRadius:10, fontWeight:700, fontSize:13, textDecoration:"none", whiteSpace:"nowrap", marginLeft:16 }}>
+            填寫問卷
+          </a>
         </div>
 
-        {/* 預覽區 */}
-        {preview && (
-          <div style={{ background:"white", borderRadius:16, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
-            <div style={{ fontSize:13, color:"#6B7280", marginBottom:12 }}>預覽結果</div>
-
-            {/* 卡頭 */}
-            <div style={{ background:`linear-gradient(135deg, ${ELEM_COLOR[preview.element]||"#6B7280"}, #1F2937)`, borderRadius:12, padding:"16px 20px", marginBottom:16, color:"white" }}>
-              <div style={{ fontSize:22, fontWeight:900 }}>{preview.name || "（未命名）"}</div>
-              <div style={{ fontSize:13, opacity:0.8, marginTop:2 }}>
-                #{preview.no} · {preview.series || "無系列"} · {ELEM[preview.element]||"?"}屬 {RACE[preview.race]||"?"}族
-              </div>
-              <div style={{ display:"flex", gap:10, marginTop:12 }}>
-                {[["❤️","HP",preview.hp],["⚔️","攻",preview.atk],["💚","回",preview.rec]].map(([ico,lbl,val])=>(
-                  <div key={lbl} style={{ background:"rgba(255,255,255,0.18)", borderRadius:8, padding:"6px 0", flex:1, textAlign:"center" }}>
-                    <div style={{ fontSize:11, opacity:0.85 }}>{ico} {lbl}</div>
-                    <div style={{ fontSize:17, fontWeight:900 }}>{Number(val).toLocaleString()}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ fontSize:13, color:"#6B7280", textAlign:"center" }}>
-              確認資訊無誤後點「確認儲存」更新
-            </div>
+        {/* 搜尋列 */}
+        <div style={{ background:"white", borderRadius:16, padding:20, marginBottom:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
+          <div style={{ display:"flex", gap:10, marginBottom:12 }}>
+            <input value={q} onChange={e => setQ(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}
+              placeholder="搜尋角色名稱、系列或作者..."
+              style={{ flex:1, padding:"10px 14px", borderRadius:10, border:"1.5px solid #D1D5DB", fontSize:14, outline:"none" }} />
+            <button onClick={handleSearch}
+              style={{ padding:"10px 20px", background:"#1F2937", color:"white", border:"none", borderRadius:10, fontWeight:700, cursor:"pointer" }}>
+              搜尋
+            </button>
           </div>
-        )}
+
+          <div style={{ display:"flex", gap:10, marginBottom:12 }}>
+            <select value={element} onChange={e => setElement(e.target.value)}
+              style={{ flex:1, padding:"8px 12px", borderRadius:8, border:"1.5px solid #D1D5DB", fontSize:14, outline:"none" }}>
+              <option value="">所有屬性</option>
+              {Object.entries(ELEM).map(([k,v]) => <option key={k} value={k}>{v}屬</option>)}
+            </select>
+            <select value={race} onChange={e => setRace(e.target.value)}
+              style={{ flex:1, padding:"8px 12px", borderRadius:8, border:"1.5px solid #D1D5DB", fontSize:14, outline:"none" }}>
+              <option value="">所有種族</option>
+              {Object.entries(RACE).map(([k,v]) => <option key={k} value={k}>{v}族</option>)}
+            </select>
+            <button onClick={() => setShowAdvanced(s => !s)}
+              style={{ padding:"8px 16px", background: showAdvanced ? "#1F2937" : "#F3F4F6", color: showAdvanced ? "white" : "#374151", border:"none", borderRadius:8, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+              進階搜尋 {showAdvanced ? "▲" : "▼"}
+            </button>
+            <button onClick={handleReset}
+              style={{ padding:"8px 16px", background:"#F3F4F6", color:"#374151", border:"none", borderRadius:8, fontWeight:600, cursor:"pointer" }}>
+              重置
+            </button>
+          </div>
+
+          {/* 進階搜尋：標籤 */}
+          {showAdvanced && (
+            <div style={{ borderTop:"1px solid #F3F4F6", paddingTop:14 }}>
+              {loggedIn && (
+                <>
+                  <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#374151", marginBottom:10, cursor:"pointer" }}>
+                    <input type="checkbox" checked={onlyMine} onChange={e => setOnlyMine(e.target.checked)} />
+                    僅顯示我新增的卡片
+                  </label>
+                  <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#374151", marginBottom:10, cursor:"pointer" }}>
+                    <input type="checkbox" checked={onlyFavorites} onChange={e => setOnlyFavorites(e.target.checked)} />
+                    只顯示我的最愛
+                  </label>
+                  <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#374151", marginBottom:14, cursor:"pointer" }}>
+                    <input type="checkbox" checked={showBlocked} onChange={e => setShowBlocked(e.target.checked)} />
+                    顯示已屏蔽的卡片
+                  </label>
+                </>
+              )}
+              {Object.entries(ALL_TAGS).map(([category, tags]) => (
+                <div key={category} style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:12, color:"#9CA3AF", fontWeight:700, marginBottom:6 }}>{category}</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                    {tags.map(tag => (
+                      <button key={tag} onClick={() => toggleTag(tag)}
+                        style={{
+                          padding:"4px 12px", borderRadius:20, fontSize:12, cursor:"pointer", fontWeight:600,
+                          background: selectedTags.includes(tag) ? "#1F2937" : "#F3F4F6",
+                          color: selectedTags.includes(tag) ? "white" : "#374151",
+                          border: "none"
+                        }}>
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {selectedTags.length > 0 && (
+                <div style={{ fontSize:12, color:"#6B7280", marginTop:4 }}>
+                  已選：{selectedTags.join("、")}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 卡片列表 */}
+        {(() => {
+          let displayCards = cards.filter(c => showBlocked || !getPref(c._id).blocked);
+          if (onlyFavorites) displayCards = displayCards.filter(c => getPref(c._id).favorite);
+          const top = displayCards.filter(c => getPref(c._id).pin === "top");
+          const mid = displayCards.filter(c => getPref(c._id).pin !== "top" && getPref(c._id).pin !== "bottom");
+          const bottom = displayCards.filter(c => getPref(c._id).pin === "bottom");
+          displayCards = [...top, ...mid, ...bottom];
+
+          if (loading) return <div style={{ textAlign:"center", color:"#9CA3AF", padding:40 }}>載入中...</div>;
+          if (displayCards.length === 0) return <div style={{ textAlign:"center", color:"#9CA3AF", padding:40 }}>沒有找到卡片</div>;
+
+          return (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(240px, 1fr))", gap:16 }}>
+            {displayCards.map(card => {
+              const pref = getPref(card._id);
+              return (
+              <div key={card._id} onClick={() => {
+                const qs = new URLSearchParams(appliedParams).toString();
+                navigate(`/card/${card._id}${qs ? `?${qs}` : ""}`);
+              }}
+                style={{ background:"white", borderRadius:14, overflow:"hidden", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", cursor:"pointer", opacity: pref.blocked ? 0.5 : 1 }}
+                onMouseEnter={e => e.currentTarget.style.transform="translateY(-2px)"}
+                onMouseLeave={e => e.currentTarget.style.transform="none"}>
+                <div style={{ background:`linear-gradient(135deg, ${ELEM_COLOR[card.element]||"#6B7280"}, #1F2937)`, padding:"16px 16px 12px" }}>
+                  <div style={{ fontSize:17, fontWeight:800, color:"white" }}>
+                    {pref.pin === "top" && "📌 "}{pref.pin === "bottom" && "📍 "}{card.parsedName}
+                  </div>
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.7)", marginTop:2 }}>
+                    #{card.cardCode.split("=b=")[0]} · {card.series || "無系列"}
+                  </div>
+                </div>
+                <div style={{ padding:"10px 16px" }}>
+                  {/* 技能標籤 */}
+                  {card.skillTags?.length > 0 && (
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
+                      {card.skillTags.slice(0,4).map(tag => (
+                        <span key={tag} style={{ fontSize:11, background:"#F3F4F6", color:"#374151", borderRadius:10, padding:"2px 8px" }}>{tag}</span>
+                      ))}
+                      {card.skillTags.length > 4 && (
+                        <span style={{ fontSize:11, color:"#9CA3AF" }}>+{card.skillTags.length - 4}</span>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div style={{ fontSize:13, color:"#6B7280" }}>
+                      {ELEM[card.element]||"?"}屬 · {RACE[card.race]||"?"}族
+                    </div>
+                    <div style={{ display:"flex", gap:10, fontSize:13, color:"#9CA3AF" }}>
+                      <span>❤️ {card.likeCount}</span>
+                      <span style={{ fontSize:12 }}>by {card.proxySubmit
+                        ? <>{card.authorName || "未知作者"}<strong style={{ color:"#374151" }}>（{card.proxyName}代投）</strong></>
+                        : (card.authorName || card.owner?.username)}</span>
+                    </div>
+                  </div>
+                  {loggedIn && (
+                    <div onClick={e => e.stopPropagation()}
+                      style={{ display:"flex", gap:6, marginTop:10, paddingTop:10, borderTop:"1px solid #F3F4F6" }}>
+                      <button onClick={() => togglePref(card._id, "favorite", !pref.favorite)}
+                        title="我的最愛"
+                        style={{ flex:1, padding:"5px 0", fontSize:13, borderRadius:8, border:"none", cursor:"pointer", background: pref.favorite ? "#FEF3C7" : "#F3F4F6", color: pref.favorite ? "#B45309" : "#9CA3AF" }}>
+                        ⭐
+                      </button>
+                      <button onClick={() => togglePref(card._id, "pin", pref.pin === "top" ? "none" : "top")}
+                        title="置頂"
+                        style={{ flex:1, padding:"5px 0", fontSize:13, borderRadius:8, border:"none", cursor:"pointer", background: pref.pin === "top" ? "#DBEAFE" : "#F3F4F6", color: pref.pin === "top" ? "#1D4ED8" : "#9CA3AF" }}>
+                        📌
+                      </button>
+                      <button onClick={() => togglePref(card._id, "pin", pref.pin === "bottom" ? "none" : "bottom")}
+                        title="置底"
+                        style={{ flex:1, padding:"5px 0", fontSize:13, borderRadius:8, border:"none", cursor:"pointer", background: pref.pin === "bottom" ? "#DBEAFE" : "#F3F4F6", color: pref.pin === "bottom" ? "#1D4ED8" : "#9CA3AF" }}>
+                        📍
+                      </button>
+                      <button onClick={() => togglePref(card._id, "blocked", !pref.blocked)}
+                        title="屏蔽"
+                        style={{ flex:1, padding:"5px 0", fontSize:13, borderRadius:8, border:"none", cursor:"pointer", background: pref.blocked ? "#FEE2E2" : "#F3F4F6", color: pref.blocked ? "#DC2626" : "#9CA3AF" }}>
+                        🚫
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              );
+            })}
+          </div>
+          );
+        })()}
       </div>
+
     </div>
   );
 }

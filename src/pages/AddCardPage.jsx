@@ -2,6 +2,8 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { parseCard, extractSkillTags } from "../parser.js";
+import { convertDriveLink } from "../utils/imageUrl.js";
+import { getUsername } from "../api/auth.js";
 
 export default function AddCardPage() {
   const [cardCode, setCardCode] = useState("");
@@ -10,17 +12,45 @@ export default function AddCardPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [imageSource, setImageSource] = useState("");
+  const [promoUrl, setPromoUrl] = useState("");
   const [description, setDescription] = useState("");
+
+  // 進階設定：作者資訊
+  const [authorAdvOpen, setAuthorAdvOpen] = useState(false);
+  const [proxySubmit, setProxySubmit] = useState(false);
+  const [authorName, setAuthorName] = useState("");
+  const [proxyName, setProxyName] = useState("");
+
+  function toggleProxy() {
+    setProxySubmit(p => {
+      const next = !p;
+      setAuthorName("");
+      return next;
+    });
+  }
+
+  // 複製權限（開關，預設開啟）
+  const [copyEnabled, setCopyEnabled] = useState(true);
 
   // 進階設定：卡片圖片
   const [advOpen, setAdvOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [imgOk, setImgOk] = useState(false);
   const [imgWarning, setImgWarning] = useState("");
+  const [driveConverted, setDriveConverted] = useState(false);
+  const [showImgHelp, setShowImgHelp] = useState(false);
   const [cropX, setCropX] = useState(50);
   const [cropY, setCropY] = useState(50);
   const [cropZoom, setCropZoom] = useState(1);
   const cropBoxRef = useRef(null);
+
+  function handleImageUrlChange(raw) {
+    const converted = convertDriveLink(raw);
+    setDriveConverted(converted !== raw);
+    setImageUrl(converted);
+    setImgOk(false);
+    setImgWarning("");
+  }
 
   function handleImageLoad(e) {
     const { naturalWidth: w, naturalHeight: h } = e.target;
@@ -59,7 +89,12 @@ export default function AddCardPage() {
         imageUrl: imageUrl.trim(),
         imageCrop: imageUrl.trim() ? { x: cropX, y: cropY, zoom: cropZoom } : null,
         skillTags: extractSkillTags(cardCode.trim()),
-        description: description.trim()
+        description: description.trim(),
+        promoUrl: promoUrl.trim(),
+        copyEnabled,
+        authorName: proxySubmit ? authorName.trim() : (authorName.trim() || getUsername() || ""),
+        proxySubmit,
+        proxyName: proxySubmit ? (proxyName.trim() || getUsername() || "") : ""
       });
       navigate("/");
     } catch (e) {
@@ -95,6 +130,15 @@ export default function AddCardPage() {
 
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>
+              宣傳貼文網址 <span style={{ color: "#9CA3AF" }}>（選填）</span>
+            </div>
+            <input value={promoUrl} onChange={e => setPromoUrl(e.target.value)}
+              placeholder="例如：社團 FB 宣傳貼文連結"
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>
               補充說明 <span style={{ color: "#9CA3AF" }}>（選填）</span>
             </div>
             <textarea value={description} onChange={e => setDescription(e.target.value)}
@@ -102,6 +146,58 @@ export default function AddCardPage() {
               style={{ width: "100%", height: 80, padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none", resize: "vertical" }} />
           </div>
 
+          {/* 複製權限：開關，預設開啟 */}
+          <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, padding: "10px 12px", background: "#F3F4F6", borderRadius: 10, cursor: "pointer" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>允許複製卡片碼</span>
+            <input type="checkbox" checked={copyEnabled} onChange={e => setCopyEnabled(e.target.checked)}
+              style={{ width: 18, height: 18, cursor: "pointer" }} />
+          </label>
+
+          {/* 進階設定：作者資訊 */}
+          <div style={{ marginTop: 12 }}>
+            <div onClick={() => setAuthorAdvOpen(o => !o)}
+              style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#F3F4F6", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#374151", userSelect: "none" }}>
+              <span>⚙️ 進階設定（作者資訊）</span>
+              <span>{authorAdvOpen ? "▲" : "▼"}</span>
+            </div>
+
+            {authorAdvOpen && (
+              <div style={{ border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 10px 10px", padding: 14 }}>
+                <button type="button" onClick={toggleProxy}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: proxySubmit ? "#1F2937" : "#F3F4F6", color: proxySubmit ? "white" : "#374151", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13, marginBottom: 12 }}>
+                  {proxySubmit ? "✓ 代為投稿" : "代為投稿"}
+                </button>
+
+                {proxySubmit ? (
+                  <>
+                    <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10, lineHeight: 1.6 }}>
+                      已標記為代投，「代投人名稱」是你自己，「作者名稱」填原作者
+                    </div>
+                    <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>代投人名稱</div>
+                    <input value={proxyName} onChange={e => setProxyName(e.target.value)}
+                      placeholder="預設為你的帳號名稱"
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none", marginBottom: 12 }} />
+                    <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>作者名稱 <span style={{ color: "#9CA3AF" }}>（選填）</span></div>
+                    <input value={authorName} onChange={e => setAuthorName(e.target.value)}
+                      placeholder="填入原作者名稱"
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10, lineHeight: 1.6 }}>
+                      如果是幫別人上傳卡片，開啟上面的開關
+                    </div>
+                    <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>作者名稱</div>
+                    <input value={authorName} onChange={e => setAuthorName(e.target.value)}
+                      placeholder="預設為你的帳號名稱"
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* 進階設定：卡片圖片 */}
           <div style={{ marginTop: 12 }}>
             <div onClick={() => setAdvOpen(o => !o)}
               style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#F3F4F6", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#374151", userSelect: "none" }}>
@@ -111,10 +207,31 @@ export default function AddCardPage() {
 
             {advOpen && (
               <div style={{ border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 10px 10px", padding: 14 }}>
-                <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>圖片網址</div>
-                <input value={imageUrl} onChange={e => { setImageUrl(e.target.value); setImgOk(false); setImgWarning(""); }}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, color: "#374151" }}>圖片網址</span>
+                  <button type="button" onClick={() => setShowImgHelp(s => !s)}
+                    style={{ width: 18, height: 18, borderRadius: "50%", border: "1px solid #D1D5DB", background: showImgHelp ? "#1F2937" : "white", color: showImgHelp ? "white" : "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer", lineHeight: "16px", padding: 0 }}>
+                    ?
+                  </button>
+                </div>
+
+                {showImgHelp && (
+                  <div style={{ fontSize: 12, color: "#4B5563", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 12px", marginBottom: 10, lineHeight: 1.7 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>✅ 通常可以用</div>
+                    以 .jpg / .png / .webp 結尾的圖片直連網址、Imgur 直連（i.imgur.com/xxx.png）、ImgBB、Cloudinary 等圖床
+                    <div style={{ fontWeight: 700, margin: "8px 0 4px" }}>⚠️ 常見會失敗</div>
+                    巴哈姆特相簿、Pixiv（防盜鏈）、Discord 連結（會過期）、Facebook/Instagram（需登入）、網頁連結（不是圖片檔案本身）
+                    <div style={{ fontWeight: 700, margin: "8px 0 4px" }}>Google Drive</div>
+                    貼分享連結會自動幫你轉換成可用格式，但這個做法不是 Google 官方保證的功能，未來仍可能失效
+                  </div>
+                )}
+
+                <input value={imageUrl} onChange={e => handleImageUrlChange(e.target.value)}
                   placeholder="貼上要顯示的卡片圖片網址"
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #D1D5DB", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
+                {driveConverted && (
+                  <div style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>✓ 已自動轉換為 Google Drive 縮圖網址</div>
+                )}
 
                 {imageUrl.trim() && (
                   <div style={{ marginTop: 12 }}>
